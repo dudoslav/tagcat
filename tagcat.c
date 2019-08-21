@@ -1,18 +1,20 @@
 /* See LICENSE file for license details. */
 #define _POSIX_C_SOURCE 200809L
 
-#include <stdio.h>
-#include <unistd.h>
-#include <stdarg.h>
-#include <stdlib.h>
-#include <string.h>
+#include <arpa/inet.h>
+#include <assert.h>
 #include <errno.h>
 #include <getopt.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/socket.h>
-#include <arpa/inet.h>
+#include <unistd.h>
 
 #define ADV_PORT 42069
-#define BUF_SIZE 128
+#define BUF_SIZE 1024
+#define TAG_SIZE 128
 
 static const size_t
 ip_size = sizeof(struct sockaddr_in);
@@ -152,11 +154,15 @@ provide(const int pro_fd) {
   cli_fd = accept(pro_fd, NULL, NULL);
 
   while ((c = read(STDIN_FILENO, buf, BUF_SIZE)) > 0)
-    write(cli_fd, buf, c); // TODO: handle error
+    if ((c = write(cli_fd, buf, c)) < 0)
+      die("failed to write to provide socket: %s\n",
+          strerror(errno));
 
   if (c < 0)
-    die("failed to read on provide socket: %s\n",
+    die("failed to read on input file descriptor: %s\n",
         strerror(errno));
+
+  close(cli_fd);
 }
 
 /* Creates stream socket and connect to provider. (client) */
@@ -175,7 +181,9 @@ consume(const struct sockaddr_in *addr) {
         strerror(errno));
 
   while ((c = read(con_fd, buf, BUF_SIZE)) > 0)
-    write(STDOUT_FILENO, buf, c); //TODO: handle error
+    if ((c = write(STDOUT_FILENO, buf, c)) < 0)
+      die("failed to write on output file descriptor: %s\n",
+          strerror(errno));
 
   if (c < 0)
     die("failed to read on consume socket: %s\n",
@@ -187,31 +195,33 @@ consume(const struct sockaddr_in *addr) {
 int
 main(int argc, char *argv[]) {
   enum { MODE_PROVIDE, MODE_RECEIVE } mode = MODE_RECEIVE;
-  const char *tag = "";
+  char tag[TAG_SIZE] = "";
   int opt;
 
   while ((opt = getopt(argc, argv, "lt:")) != -1) {
     switch (opt) {
     case 'l': mode = MODE_PROVIDE; break;
-    case 't': tag = strdup(optarg); break;
+    case 't':
+              assert(strlen(tag) < TAG_SIZE);
+              strcpy(tag, optarg);
+              break;
     }
   }
 
   struct sockaddr_in addr;
   int pro_fd;
   switch (mode) {
-  case MODE_RECEIVE:
-    request_tag(tag, &addr);
-    consume(&addr);
-    break;
+  case MODE_RECEIVE: 
+                     request_tag(tag, &addr);
+                     consume(&addr);
+                     break;
   case MODE_PROVIDE:
-    pro_fd = create_provide(&addr);
-    advertise(tag, addr.sin_port);
-    provide(pro_fd);
-    close(pro_fd);
-    break;
+                     pro_fd = create_provide(&addr);
+                     advertise(tag, addr.sin_port);
+                     provide(pro_fd);
+                     close(pro_fd);
+                     break;
   }
 
-  // free(tag) /* Only if was allocated */
   return 0;
 }

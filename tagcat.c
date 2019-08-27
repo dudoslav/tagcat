@@ -192,19 +192,31 @@ consume(const struct sockaddr_in *addr) {
   close(con_fd);
 }
 
+/* Print help */
+static void
+help(const char *progname) {
+  printf("Usage: %s [-t tag] [-l]\n", progname);
+  printf("Order of opperations:\n");
+  printf("\t1. %s -l ...\n", progname);
+  printf("\t2. %s ...\n", progname);
+}
+
 int
 main(int argc, char *argv[]) {
   enum { MODE_PROVIDE, MODE_RECEIVE } mode = MODE_RECEIVE;
   char tag[TAG_SIZE] = "";
   int opt;
 
-  while ((opt = getopt(argc, argv, "lt:")) != -1) {
+  while ((opt = getopt(argc, argv, "hlt:")) != -1) {
     switch (opt) {
-    case 'l': mode = MODE_PROVIDE; break;
+    case 'l': mode = MODE_PROVIDE; break; /* -l as listen */
     case 't':
               assert(strlen(tag) < TAG_SIZE);
               strcpy(tag, optarg);
               break;
+    case 'h': 
+              help(argv[0]);
+              return 0;
     }
   }
 
